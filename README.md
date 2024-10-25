@@ -1,5 +1,5 @@
 # Predicting Hotel Booking Cancellations
-## Introduction
+## Project Overview
 This project centers on the prediction of cancellations of hotel bookings using machine learning techniques. It utilizes a reduced version of the 'Hotel booking demand' dataset from [Kaggle](https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand). This dataset has been reduced and split into two parts - the training dataset (`bookings_train.Rdata`) and the test dataset (`bookings_test_solutions.Rdata`). The training dataset comprises 24 035 bookings, and the training dataset comprises further 16 025 bookings. The dataset contains a total of 25 variables, including our target variable `is_cancelled`. The goal of the project was to reach at least 85% accuracy, while reaching the highest sensitivity possible. 
 
 In this project, I was responsible for the model assessment set-up, the creation of the recipe and the development of the Random Forest model.
@@ -15,7 +15,7 @@ Multiple models were fitted and assessed:
 - Regularized Logistic Regression
 - Random Forest Classifier
 
-Each of the models was tuned using a 10-fold cross validation. The best model was selected based on the performance on the test set, using the highest accuracy achieved.
+Each of the models was tuned using a 10-fold cross validation. The best model was selected based on the performance on the test set, using the highest accuracy achieved. In the code, only Random Forest and the Regularized Logistic Regression Model are included, since KNN's tuning process is largely similar to the RF model.
 
 ## Final Results
 The best performing model was the random forest model.

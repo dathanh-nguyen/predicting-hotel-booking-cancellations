@@ -1,5 +1,4 @@
 ---
-R---
 title: "Hotel Booking Cancellations"
 authors: "Ziyi Li, Konstantinos Loukaitis, Thanh Dat Nguyen, Lars Ziere"
 date: "2022-12-20"
@@ -27,7 +26,7 @@ library(kknn)
 library(scales)
 ```
 
-# Exploratory Data Analysis and Feature Engineering
+# Exploratory Data Analysis
 
 Let's load the data.
 
@@ -49,22 +48,18 @@ skim(bookings_train) |> knit_print ()
 #undefined meals exist
 #roughly the same amount of bookings all year round 
 #stays in weekend nights and week nights correlated?
-#some outliers here from ther on out - children, babies, adults, repeated guest, previous cancellations, booking changes etc. 
+#some outliers here from there on out - children, babies, adults, repeated guest, previous cancellations, booking changes etc. 
 #there is a negative average daily rate? - also this one has a different distribution
 #someone with 185 days on the waiting list and 26 previous cancellations 
 
 #is repeated guest should be a factor variable, not a numeric oone
 bookings_train$is_repeated_guest <- as.factor(bookings_train$is_repeated_guest)
-#the average of babies is 0.01 - maybe just merge it with children?
+#the average of babies is 0.01 - propose to merge it with children
 #majority of previous bookings and previous bookings not cancelled equal to zero
 #the character variables could probably be set to type factor for the regressions
 ```
 
-Outliers' effect could be argued to be lowered through standardization
-
 ```{r}
-test = subset(bookings_train, select = -c(is_cancelled,arrival_date_month, country, reserved_room_type,assigned_room_type, meal, market_segment, deposit_type, customer_type))
-
 cor(bookings_train$stays_in_week_nights,bookings_train$stays_in_weekend_nights)
 #may be useful to combine somehow or drop one
 ```
@@ -72,8 +67,6 @@ cor(bookings_train$stays_in_week_nights,bookings_train$stays_in_weekend_nights)
 ```{r}
 bookings_train |> group_by(is_cancelled) |> 
   skim() |> yank("numeric") |> knit_print()
-
-#lead time,adults,previous cancellations?,previous bookings not cancelled, required car parking spaces, days on waiting list has a differing distribution 
 ```
 
 ```{r}
@@ -93,7 +86,10 @@ ggplot(data = bookings_train, aes(x = deposit_type, fill = is_cancelled)) + geom
 ggplot(data = bookings_train, aes(x = customer_type, fill = is_cancelled)) + geom_bar(position = "fill")#transients have significantly higher cancellations
 ```
 
+# Data Cleaning and Feature Engineering
+
 ```{r cleaning}
+## Preprocessing
 #removing observations
 bookings_train <- filter(bookings_train, bookings_train$adults != 0)
 
@@ -104,7 +100,7 @@ bookings_train <- filter(bookings_train, total_stay_nights != 0)
 
 bookings_train <- filter(bookings_train, bookings_train$adr > 0)
 
-##creating new variables
+## Feature engineering
 #differing between external and internal tourism
 bookings_train <- bookings_train |> mutate(Regional = case_when(country == "PRT" ~ "Internal", country != "PRT" ~ "External"))
 
@@ -145,16 +141,13 @@ bookings_train$is_repeated_guest <- as.factor(bookings_train$is_repeated_guest)
 
 
 skim(bookings_train) |> knit_print ()
-
-
-
 ```
 
 # Model Assessment Setup
 
-Now that we have finished our feature engineering, we can discuss our model assessment setup. Our data has already been divided into the training and test beforehand so on that end, we do not have to do anything. Considering that, in this exercise, we are comparing three different models (KNN, regularized logistic regression and random forests), it is also necessary to further split the training set into observations that will be used to train our models and into out-of-sample observations that will be used to compare the performance between the models. We have decided to go with a 75% split for the training and 25% for the model comparison.
+Now that we have finished our feature engineering, we can discuss our model assessment setup. Our data has already been divided into the training and test beforehand, but the labels for our testing set only arrived at a later date. Considering that, in this exercise, we are comparing three different models (KNN, regularized logistic regression and random forests), it is also necessary to further split the training set into observations that will be used to train our models and into out-of-sample observations that will be used to compare the performance between the models. We have decided to go with a 75% split for the training and 25% for the model comparison.
 
-Regarding the metrics, we chose to go with accuracy and sensitivity, as these were metrics that the hotel management expressed interest in (as mentioned in the description). We also chose Cohen's Kappa as an additional metric, as from the exploratory data analysis, we found that there are almost three times as many non-cancellations compared to cancellations. This metric helps us adjust accuracy for the chance of making a correct prediction by chance alone, which could be relatively high given the imbalance of dependent variables in the data set. Furthermore, we also included specificity as a metric, since we concluded that is overall more costly for the hotel if the model predicts cancellation but there is none (high false positives - opposite of true negatives), since this may lead to lower levels of customer service (understaffed hotels, not enough rooms).
+Regarding the metrics, we chose to go with accuracy and sensitivity, as these were metrics that the hotel management expressed interest in. We also chose Cohen's Kappa as an additional metric, as from the exploratory data analysis, we found that there are almost three times as many non-cancellations compared to cancellations. This metric helps us adjust accuracy for the chance of making a correct prediction by chance alone, which could be relatively high given the imbalance of dependent variables in the data set. Furthermore, we also included specificity as a metric, since we concluded that is overall more costly for the hotel if the model predicts cancellation but there is none (high false positives - opposite of true negatives), since this may lead to lower levels of customer service (understaffed hotels, not enough rooms).
 
 ```{r}
 set.seed(9125)
@@ -182,9 +175,13 @@ Once our models are tuned, we can then compare their performance on our "validat
 
 ## Setting up the recipe
 
-In this section we also set up the recipe, since this remains (almost) the same across the models. We are including all the independent variables we have in our data post-exploratory analysis and feature engineering, as predictors in our models. Additionally, we standardize the numerical variables to reduce the effect of outliers, and to be able to perform KNN classification (since the variable scale matters for the distance measurement). We also create dummy variables from all our categorical variables with one-hot encoding so there is a dummy variable created for each class of these variables, which is a more useful representation for decision trees.
+In this section we also set up the recipe, since this remains (almost) the same across the models. We are including all the independent variables we have in our data post-exploratory analysis and feature engineering, as predictors in our models. Additionally:
 
-To deal with the class imbalance, here we chose to create a downsampling version.
+-    we standardize the numerical variables to reduce the effect of outliers, and to be able to perform KNN classification (since the variable scale matters for the distance measurement)
+
+-   we create dummy variables from all our categorical variables with one-hot encoding so there is a dummy variable created for each class of these variables, which is a more useful representation for decision trees.
+
+To deal with the class imbalance, here we chose to also test a recipe with downsampled data (based on the variable we want to predict) version.
 
 ```{r}
 recipe_downsample <- recipe(is_cancelled ~ ., data = bookings_train2) |> 
@@ -205,7 +202,6 @@ Now we can start building the actual model. We tune the number of *m* predictors
 rf_model_tune <- rand_forest(mtry = tune(), trees = 500) |>
   set_mode("classification") |>
   set_engine("ranger")
-
 ```
 
 ## Workflow for tuning
@@ -225,15 +221,16 @@ rf_tune_wf_ds <- workflow() |>
 
 ## Tuning
 
-Here we choose to do the tuning for m-values between 5 and 15 (we tried multiple ranges and this one ended up being the most sensible, while capturing the desired results). Note: when downsampling in the pre-processing recipe, the sensitivity of the model increased considerably (around 15% or so), while the other metrics decreased only marginally.
+Here we choose to do the tuning for m-values between 5 and 15 (we tried multiple ranges and this one ended up being the most sensible, while capturing the desired results). *Note*: when downsampling in the pre-processing recipe, the sensitivity of the model increased considerably (around 15% or so), while the other metrics decreased only marginally.
 
 ```{r}
-registerDoParallel(cores = 4)
+registerDoParallel(cores = 6)
 ```
 
 Here, we define our metrics and tune the model.
 
 ```{r}
+# these are metrics we defined above
 class_metrics <- metric_set(accuracy, kap, sensitivity, 
                             specificity, roc_auc)
 
@@ -304,12 +301,13 @@ rf_tune_res_ds |>
   facet_grid(.metric ~ ., scales = "free_y")
 ```
 
-## Test set performance
+## Test ("validation") set performance
 
-We choose to go with the model, which has the highest accuracy, which is model2 with 6 random predictors being chosen at each split.
+We choose to go with the model, which has the highest accuracy, which is model2 with 6 random predictors being chosen at each split. Now we test the performance of this model on the "validation" set we created above in Model Assessment Setup. As mentioned, the labels for the actual test set (`bookings_test_solutions.RData`) were not provided until later on in the project so this was a necessary step for us.
 
 ```{r}
-best_acc <- select_best(rf_tune_res_ds, "accuracy")
+# select the best parameters based on the accuracy metric
+best_acc <- select_best(rf_tune_res_ds, metric = "accuracy")
 rf_final_wf <- finalize_workflow(rf_tune_wf_ds, best_acc)
 rf_final_wf
 
@@ -334,7 +332,10 @@ rf_final_fit |> collect_predictions() |>
   autoplot()
 ```
 
+For communication with stakeholders, we plot out the variable importance here, as determined by the random forest algorithm:
+
 ```{r}
+# here we plot out the importance of the features as determined by our random forest algorithm
 rf_model_vi <- rand_forest(mtry = 6, trees = 500) |>
   set_mode("classification") |>
   set_engine("ranger", importance = "permutation")
@@ -347,236 +348,6 @@ set.seed(9923)
 rf_vi_fit <- rf_vi_wf |> fit(data = bookings_train2)
 
 rf_vi_fit |> extract_fit_parsnip() |> vip(geom = "point", num_features = 15)
-```
-
-# K-nearest neighbours classification
-
-For the $k$-nearest neighbours classifier, we have to perform tuning before we can compare its performance.
-
-### Specifying a workflow
-
-First, we specify the model, its mode (here, classification), and the computational engine:
-
-```{r}
-knn_class_mod <- nearest_neighbor(neighbors = tune()) |> 
-  set_mode("classification") |> 
-  set_engine("kknn")
-```
-
-For the recipe, we can make a variety of choices. We use the same as in the random forest model:
-
-```{r}
-recipe_downsample <- recipe(is_cancelled ~ ., data = bookings_train2) |> 
-  update_role(country, new_role = "metadata") |> 
-  step_normalize(all_numeric()) |>   
-  step_downsample(is_cancelled) 
-
-recipe_regular <- recipe(is_cancelled ~ ., data = bookings_train2) |> 
-  update_role(country, new_role = "metadata") |> 
-  step_normalize(all_numeric()) 
-```
-
-Here is an overview of the recipes:
-
-```{r}
-recipe_downsample
-recipe_regular
-```
-
-Finally, the workflow object is then just the knn models applied on the recipies specified above.
-
-```{r}
-knn_class_wf <-
-  workflow() |> 
-  add_model(knn_class_mod) |> 
-  add_recipe(recipe_regular)
-
-knn_class_wf_ds <- 
-  workflow() |>
-  add_model(knn_class_mod)|>
-  add_recipe(recipe_downsample)
-```
-
-We are now ready to tune our k-NN classification model using this workflow:
-
-```{r}
-knn_class_wf
-knn_class_wf_ds
-```
-
-### Setting up a tuning grid
-
-Through try and error the following tuning grid for the values of $k$ was selected:
-
-```{r}
-knn_class_tune_grid <- tibble(neighbors = 5:30*2 + 1)
-knn_class_tune_grid
-```
-
-### Tuning the number of nearest neighbours
-
-We perform a grid search over the grid of potential values, using our validation set, as follows:
-
-```{r}
-
-registerDoParallel(cores = 4)
-
-knn_class_tune_res <- knn_class_wf |> 
-  tune_grid(resamples = cv_folds, 
-            grid = knn_class_tune_grid,
-            metrics = metric_set(accuracy, kap, sensitivity, 
-                            specificity, roc_auc))
-
-knn_class_tune_res_ds <- knn_class_wf_ds |> 
-  tune_grid(resamples = cv_folds, 
-            grid = knn_class_tune_grid,
-            metrics = metric_set(accuracy, kap, sensitivity, 
-                            specificity, roc_auc))
-```
-
-The metrics can be collected as follows:
-
-```{r}
-knn_class_tune_metrics <- knn_class_tune_res |> collect_metrics()
-knn_class_tune_metrics_ds <- knn_class_tune_res_ds |> collect_metrics()
-```
-
-We can now plot them directly too, as we do here:
-
-```{r}
-knn_class_tune_metrics |> 
-  ggplot(aes(x = neighbors, y = mean)) + 
-  geom_point() + geom_line() + 
-  facet_wrap(~ .metric, scales = "free_y")
-
-knn_class_tune_metrics_ds |> 
-  ggplot(aes(x = neighbors, y = mean)) + 
-  geom_point() + geom_line() + 
-  facet_wrap(~ .metric, scales = "free_y")
-```
-
-Here are the top five options by accuracy:
-
-```{r}
-knn_class_tune_res |> 
-  show_best("accuracy", n = 5) |> 
-  arrange(desc(mean), desc(neighbors))
-
-knn_class_tune_res_ds |> 
-  show_best("accuracy", n = 5) |> 
-  arrange(desc(mean), desc(neighbors))
-```
-
-
-Now we run a few plots to assess the model's performance.
-
-```{r}
-knn_class_tune_res |>
-  collect_metrics() |>
-  filter(.metric %in% c("accuracy","sensitivity", "specificity")) |>
-  ggplot(aes(x = neighbors, y = mean, ymin = mean - std_err, ymax = mean + std_err, 
-             colour = .metric)) +
-  geom_errorbar() + 
-  geom_line() +
-  geom_point() +
-  facet_grid(.metric ~ ., scales = "free_y")+
-  scale_y_continuous(labels = number_format(accuracy = 0.001))
-  
-```
-
-```{r}
-knn_class_tune_res_ds |>
-  collect_metrics() |>
-  filter(.metric %in% c("accuracy","sensitivity", "specificity")) |>
-  ggplot(aes(x = neighbors, y = mean, ymin = mean - std_err, ymax = mean + std_err, 
-             colour = .metric)) +
-  geom_errorbar() + 
-  geom_line() +
-  geom_point() +
-  facet_grid(.metric ~ ., scales = "free_y")+
-  scale_y_continuous(labels = number_format(accuracy = 0.001))
-```
-
-```{r}
-knn_class_tune_res |>
-  collect_metrics() |>
-  filter(.metric %in% c("roc_auc", "accuracy", "kap")) |>
-  ggplot(aes(x = neighbors, y = mean, ymin = mean - std_err, ymax = mean + std_err, 
-             colour = .metric)) +
-  geom_errorbar() + 
-  geom_line() +
-  geom_point() +
-  facet_grid(.metric ~ ., scales = "free_y")+
-  scale_y_continuous(labels = number_format(accuracy = 0.001))
-```
-
-```{r}
-knn_class_tune_res_ds |>
-  collect_metrics() |>
-  filter(.metric %in% c("roc_auc", "accuracy", "kap")) |>
-  ggplot(aes(x = neighbors, y = mean, ymin = mean - std_err, ymax = mean + std_err, 
-             colour = .metric)) +
-  geom_errorbar() + 
-  geom_line() +
-  geom_point() +
-  facet_grid(.metric ~ ., scales = "free_y")
-```
-
-## Finalizing our workflow
-
-Now we can finalize our workflow for the k-NN classification model by selecting a value for $k$ neighbours. Here we will stick to using accuracy for now:
-
-```{r}
-knn_class_best_model <- knn_class_tune_res |> 
-  select_best(metric = "accuracy")
-knn_class_best_model
-
-knn_class_best_model_ds <- knn_class_tune_res_ds |> 
-  select_best(metric = "accuracy")
-knn_class_best_model_ds
-```
-
-Let's finalize our workflow:
-
-```{r}
-knn_class_workflow_final <- 
-  knn_class_wf |> 
-  finalize_workflow(knn_class_best_model)
-knn_class_workflow_final
-
-knn_class_workflow_final_ds <- 
-  knn_class_wf_ds |> 
-  finalize_workflow(knn_class_best_model_ds)
-knn_class_workflow_final_ds
-```
-
-```{r}
-knn_class_last_fit <- knn_class_workflow_final |> 
-  last_fit(bookings_train_split, 
-           metrics = metric_set(kap, f_meas, bal_accuracy, accuracy))
-
-knn_class_last_fit_ds <- knn_class_workflow_final_ds |> 
-  last_fit(bookings_train_split, 
-           metrics = metric_set(kap, f_meas, bal_accuracy, accuracy))
-```
-
-We can collect the same metrics as:
-
-```{r}
-knn_class_metrics <- knn_class_last_fit |> 
-  collect_metrics()
-knn_class_metrics
-
-knn_class_metrics_ds <- knn_class_last_fit_ds |> 
-  collect_metrics()
-knn_class_metrics_ds
-```
-
-A confusion matrix for the model for the stratified dataset, is presented below.
-
-```{r}
-knn_class_last_fit |> collect_predictions() |> 
-  conf_mat(truth = is_cancelled, estimate = .pred_class) 
 ```
 
 # Regularized logistic regression
@@ -649,7 +420,11 @@ lasso_test_metrics
 
 # Using the chosen model on the test dataset
 
+At this point, we were provided the labels for the test dataset and could test the performance of our tuned model on "real-life" data.
+
 ## Cleaning dataset
+
+Same steps as were applied to our training dataset are replicated here.
 
 ```{r cleaning2}
 #removing observations
@@ -703,7 +478,7 @@ bookings_test_solutions <- bookings_test_solutions |> filter(assigned_room_type 
 
 ```
 
-## Train and predict
+## Fit and predict
 
 The model is performed with random forests on the final test set, as it was selected as the optimum technique.
 
